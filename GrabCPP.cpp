@@ -59,7 +59,9 @@ vector<Vec4i> hierarchy;
 /// Address for UDP Socket
 const char* srcIP = "127.0.0.1";
 const char* destIP = "127.0.0.1";
-
+int distx;
+int disty;
+int framecenx, frameceny,x,y;
 
 int main(int argc, char* argv[])
 {
@@ -189,6 +191,15 @@ static void XferCallback(SapXferCallbackInfo *pInfo)
    int largest_area = 0;
    int largest_contour_index = 0;
    PUINT8 pData;
+   char x_thos ;
+   char x_huns ;
+   char x_tens ;
+   char x_ones ;
+   			   ;
+   char y_thos ;
+   char y_huns ;
+   char y_tens ;
+   char y_ones ;
   
    // refresh view
    ///pView->Show();  no longer want to waste resources viewing with sapera window, using openCV window 
@@ -230,21 +241,69 @@ static void XferCallback(SapXferCallbackInfo *pInfo)
    center = (bounding_rect.br() + bounding_rect.tl())*0.5; ///find center of the circle 
    circle(Img, center, 5, Scalar(120, 120, 120), 2); /// draw center on circle 
    
-   int x = center.x;
-   int y = center.y; ///coordinates for center of the sun 
+   x = center.x;
+   y = center.y;
+
+
+ //  frame_center.x = (Buf->GetWidth()) / 2;
+ //  frame_center.y = (Buf->GetHeight()) / 2;  ///center of the frame 
+
+   framecenx = (Buf->GetWidth()) / 2;
+   frameceny = (Buf->GetHeight()) / 2;
+   distx = x - framecenx;
+   disty = y - frameceny;
+
+
+   //cout << "Distance from center of Frame: " << (center.x - frame_center.x) << "," << (center.y - frame_center.y) << "\n";
 
 
    ///Data must be sent through UDP as Const Char* , so coordinate location parsed into chars 
    /// +48 accounts for the offset of ASCII values 
-   char x_thos = (char)((x % 10) + 48);
-   char x_huns = (char)(((x / 10) % 10) + 48);
-   char x_tens = (char)(((x / 100) % 10) + 48);
-   char x_ones = (char)(((x / 1000) % 10) + 48);
+   
+   if ((distx < 0)) ///conditions for if less than to send as const char * 
+   {
+	   x_thos = (char)((abs(distx) % 10) + 48); ///value for negative sign is ASCII
+	   x_huns = (char)(((abs(distx) / 10) % 10) + 48);
+	   x_tens = (char)(((abs(distx) / 100) % 10) + 48);
+	   x_ones = 45;
+   }
+   else
+   {
+	  x_thos = (char)(((distx % 10) + 48));
+	  x_huns = (char)((((distx) / 10) % 10) + 48);
+	  x_tens = (char)((((distx) / 100) % 10) + 48);
+	  x_ones = (char)((((distx) / 1000) % 10) + 48);
 
-   char y_thos = (char)((y % 10) + 48);
-   char y_huns = (char)(((y / 10) % 10) + 48);
-   char y_tens = (char)(((y / 100) % 10) + 48);
-   char y_ones = (char)(((y / 1000) % 10) + 48);
+	  
+   }
+   if ((disty) < 0) ///identical to above but for y coordinate
+   {
+	   y_thos = (char)((abs(disty)%10) + 48);
+	   y_huns = (char)(((abs(disty) / 10) % 10) + 48);
+	   y_tens = (char)(((abs(disty) / 100) % 10) + 48);
+	   y_ones = 45;
+   }
+   else
+   {
+	   y_thos = (char)(((disty % 10) + 48));
+	   y_huns = (char)((((disty) / 10) % 10) + 48);
+	   y_tens = (char)((((disty) / 100) % 10) + 48);
+	   y_ones = (char)((((disty) / 1000) % 10) + 48);
+   }
+   
+   
+   /*
+   x_thos = (char)(((x) % 10) + 48);
+   x_huns = (char)((((x) / 10) % 10) + 48);
+   x_tens = (char)((((x) / 100) % 10) + 48);
+   x_ones = (char)((((x) / 1000) % 10) + 48);
+
+   y_thos = (char)(((y) % 10) + 48);
+   y_huns = (char)((((y) / 10) % 10) + 48);
+   y_tens = (char)((((y) / 100) % 10) + 48);
+   y_ones = (char)((((y) / 1000) % 10) + 48);
+   */
+
 
    char comma = 44; ///ASCII value for comma 
 
