@@ -7,11 +7,23 @@
 //
 // -----------------------------------------------------------------------------------------
 
-// Disable deprecated function warnings with Visual Studio 2005
+// Disable deprecated function warnings with Visual Studio 2005\
+
+/// Modified for Use with OpenCV 
+/// Comments with "///" indicate changes from original code 
+
 #if defined(_MSC_VER) && _MSC_VER >= 1400
 #pragma warning(disable: 4995)
 #endif
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 #include "stdio.h"
 #include "conio.h"
 #include "math.h"
@@ -22,11 +34,9 @@
 #include <opencv2/highgui.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
 #include <iostream>
-#include <fstream>
 
 using namespace cv;
 using namespace std;
-
 
 
 // Restore deprecated function warnings with Visual Studio 2005
@@ -39,12 +49,16 @@ static void XferCallback(SapXferCallbackInfo *pInfo);
 static BOOL GetOptions(int argc, char *argv[], char *acqServerName, UINT32 *pAcqDeviceIndex, char *configFileName);
 static BOOL GetOptionsFromCommandLine(int argc, char *argv[], char *acqServerName, UINT32 *pAcqDeviceIndex, char *configFileName);
 
-/// Globals for Tracking Function (Bad Practice but better than allocating every time) 
+/// Globals 
 Mat Img;
 Rect bounding_rect;
 Point center;
 vector<vector<Point>> contours; 
 vector<Vec4i> hierarchy;
+
+/// Address for UDP Socket
+const char* srcIP = "127.0.0.1";
+const char* destIP = "127.0.0.1";
 
 
 int main(int argc, char* argv[])
@@ -68,7 +82,7 @@ int main(int argc, char* argv[])
 
   
 
-   /// now have a Mat container in a grab program
+   
 
    SapAcquisition Acq;
    SapAcqDevice AcqDevice;
@@ -77,9 +91,6 @@ int main(int argc, char* argv[])
    SapTransfer AcqDeviceToBuf = SapAcqDeviceToBuf(&AcqDevice, &Buffers);
    SapTransfer* Xfer = NULL;
    SapView View;
-
-   Img = Mat::zeros(Buffers.GetHeight(), Buffers.GetWidth(), CV_8UC1);
-
    SapLocation loc(acqServerName, acqDeviceNumber);
 
    if (SapManager::GetResourceCount(acqServerName, SapManager::ResourceAcq) > 0)
@@ -111,10 +122,9 @@ int main(int argc, char* argv[])
       // Create acquisition object
       if (!AcqDevice.Create())
          goto FreeHandles;
-
    }
 
-   
+   ///Initialize MAT Container for OpenCV to correct width and heigh, filled with zeros 
    Img = Mat::zeros(Buffers.GetHeight(), Buffers.GetWidth(), CV_8UC1);
 
    // Create buffer object
@@ -134,46 +144,8 @@ int main(int argc, char* argv[])
   
    Xfer->Grab();
    
-
-  
-   ///int numPix = (Buffers.GetWidth())*(Buffers.GetHeight());
-   ///int *Pixels;
-   ///Pixels = new int[numPix];
-   //int z;
-   
-
-   //PUINT8 pData;
-
+   ///Initialize MAT Container for OpenCV to correct width and heigh, filled with zeros  (need 2nd time to prevent being skipped by goto)
    Img = Mat::zeros(Buffers.GetHeight(), Buffers.GetWidth(), CV_8UC1);
-   /*
-   /// create a Mat object of the currenty image size initially filled with zeros
-   Buffers.GetAddress((void**)&pData);
-   for (int i = 0; i < Buffers.GetHeight(); i++)
-   {
-
-	   for (int j = 0; j < Buffers.GetWidth(); j++)
-	   {
-
-		   // Img.at<uchar>(i, j) = *pData;
-		   
-		   Img.at<uchar>(i, j) = *pData;
-		   z = Img.at<uchar>(i, j);
-		   pData++;
-		   //z = *pData;
-		   /// OpenCV Libraries are now imported, modify to directly store in a MAT
-		   /// then pass to another function for openCV processing 
-	   }
-   }
-   Buffers.ReleaseAddress((void**)&pData);
-  /// cout << "Img = " << endl << " " << Img << endl << endl;
-   ///namedWindow("Display window", WINDOW_AUTOSIZE);// Create a window for display.
-  /// imshow("Display window", Img);
-  */
-  
-  
-   /// release pointer to intensity matrix 
-   ///delete[] Pixels;
-
 
    printf("Press any key to stop grab\n");
    CorGetch();
@@ -186,6 +158,7 @@ int main(int argc, char* argv[])
 FreeHandles:
 
    printf("Press any key to terminate\n");
+
    CorGetch();
 
    //unregister the acquisition callback
@@ -215,62 +188,94 @@ static void XferCallback(SapXferCallbackInfo *pInfo)
   
    int largest_area = 0;
    int largest_contour_index = 0;
-   ofstream out("C:\\Users\\Bobby\\Desktop\\data.txt"); //filestream location and filename 
-   
-
-   
    PUINT8 pData;
   
    // refresh view
    ///pView->Show();  no longer want to waste resources viewing with sapera window, using openCV window 
   
-   SapBuffer *Buf = pView->GetBuffer();
-   
-   Buf->GetAddress((void**)&pData); /// 
-   for (int i = 0; i < Buf->GetHeight(); i++)
+   SapBuffer *Buf = pView->GetBuffer(); ///retrieve current buffer
+   Buf->GetAddress((void**)&pData); ///retrieve pointer to intensity matrix values from Buffer  
+   for (int i = 0; i < Buf->GetHeight(); i++) ///loop through the size of the whole image and store intensity values in the Mat container Img
    {
-
 	   for (int j = 0; j < Buf->GetWidth(); j++)
 	   {
-
-		   // Img.at<uchar>(i, j) = *pData;
-
+		   
 		   Img.at<uchar>(i, j) = *pData;
-		  // z = Img.at<uchar>(i, j);
-		   pData++;
+		   pData++; ///increment through each memory address of pData 
 	   }
    }
-   Buf->ReleaseAddress((void**)&pData);
+   Buf->ReleaseAddress((void**)&pData); ///release pointer to intensity matrix 
   
-   /// GaussianBlur(Img, Img, Size(3, 3), 0, 0); //Filter the image 
-   threshold(Img,Img, 30, 255, THRESH_BINARY); //Threshold the gray
-   findContours(Img, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_TC89_L1); // Find the contours in the image
+   /// GaussianBlur(Img, Img, Size(3, 3), 0, 0); 
+   ///Filter the image (this operation lowers the number of contours, but is an expensive operation, usually faster to use only threshold)
+
+   threshold(Img,Img, 30, 255, THRESH_BINARY); ///Threshold the gray
+   findContours(Img, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_TC89_L1); /// Find the contours in the image
    
-   for (int i = 0; i< contours.size(); i++) // iterate through each contour. 
+   for (int i = 0; i< contours.size(); i++) /// iterate through each contour. 
    {
-	   double a = contourArea(contours[i], false);  //  Find the area of contour
+	   double a = contourArea(contours[i], false);  ///  Find the area of contour
 
-
-	   
 	   if (a>largest_area) 
 	   {
 		   largest_area = a;
-		   largest_contour_index = i;                //Store the index of largest contour
-		   bounding_rect = boundingRect(contours[i]); // Find the bounding rectangle for biggest contour   
+		   largest_contour_index = i;                ///Store the index of largest contour
+		   bounding_rect = boundingRect(contours[i]); /// Find the bounding rectangle for biggest contour   
 		  // cout << i << "\n";
 		  //cout << contours.size() << "\n";
 	   }
    }
   
-  // drawContours(Img, contours, largest_contour_index, color, CV_FILLED, 8, hierarchy); // Draw the largest contour using previously stored index.
-   rectangle(Img, bounding_rect, Scalar(120,120 ,120), 5, 2, 0);
-   center = (bounding_rect.br() + bounding_rect.tl())*0.5;
-   circle(Img, center, 5, Scalar(120, 120, 120), 2);
-   out << center.x << ","<< center.y << "\n"; 
-   out.close();
+   rectangle(Img, bounding_rect, Scalar(120,120 ,120), 5, 2, 0); ///draw a rectangle around the disk of the sun 
+   center = (bounding_rect.br() + bounding_rect.tl())*0.5; ///find center of the circle 
+   circle(Img, center, 5, Scalar(120, 120, 120), 2); /// draw center on circle 
+   
+   int x = center.x;
+   int y = center.y; ///coordinates for center of the sun 
 
 
-   imshow("frame", Img);  // ***USE THESE TO SHOW WITH OPENCV WINDOW
+   ///Data must be sent through UDP as Const Char* , so coordinate location parsed into chars 
+   /// +48 accounts for the offset of ASCII values 
+   char x_thos = (char)((x % 10) + 48);
+   char x_huns = (char)(((x / 10) % 10) + 48);
+   char x_tens = (char)(((x / 100) % 10) + 48);
+   char x_ones = (char)(((x / 1000) % 10) + 48);
+
+   char y_thos = (char)((y % 10) + 48);
+   char y_huns = (char)(((y / 10) % 10) + 48);
+   char y_tens = (char)(((y / 100) % 10) + 48);
+   char y_ones = (char)(((y / 1000) % 10) + 48);
+
+   char comma = 44; ///ASCII value for comma 
+
+   char pkt[18] = { x_ones,x_tens,x_huns,x_thos,comma,y_ones,y_tens,y_huns,y_thos }; ///Packet to be sent 
+
+   ///UDP Configuartion 
+   sockaddr_in dest;
+   sockaddr_in local;
+   WSAData data;
+   WSAStartup(MAKEWORD(2, 2), &data);
+   ULONG* srcAddr = new ULONG;
+   ULONG* destAddr = new ULONG;
+
+   local.sin_family = AF_INET;
+   inet_pton(AF_INET, srcIP, srcAddr);
+   local.sin_addr.s_addr = *srcAddr;
+   local.sin_port = htons(0);
+
+   dest.sin_family = AF_INET;
+   inet_pton(AF_INET, destIP, destAddr);
+   dest.sin_addr.s_addr = *destAddr;
+   dest.sin_port = htons(8080);
+
+   SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+   bind(s, (sockaddr *)&local, sizeof(local));
+
+   sendto(s, pkt, strlen(pkt), 0, (sockaddr *)&dest, sizeof(dest));
+
+
+
+   imshow("frame", Img);  /// ***USE THESE TO SHOW WITH OPENCV WINDOW
    waitKey(1);
    
    
@@ -304,7 +309,8 @@ static void XferCallback(SapXferCallbackInfo *pInfo)
 
    }
 
- 
+   delete srcAddr;
+   delete destAddr;
 }
 
 static BOOL GetOptions(int argc, char *argv[], char *acqServerName, UINT32 *pAcqDeviceIndex, char *configFileName)
