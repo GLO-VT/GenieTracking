@@ -20,10 +20,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <iphlpapi.h>
 #include "stdio.h"
 #include "conio.h"
 #include "math.h"
@@ -34,6 +30,7 @@
 #include <opencv2/highgui.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
 #include <iostream>
+#include <fstream>
 
 using namespace cv;
 using namespace std;
@@ -51,17 +48,9 @@ static BOOL GetOptionsFromCommandLine(int argc, char *argv[], char *acqServerNam
 
 /// Globals 
 Mat Img;
-Rect bounding_rect;
-Point center;
-vector<vector<Point>> contours; 
-vector<Vec4i> hierarchy;
 
 /// Address for UDP Socket
-const char* srcIP = "127.0.0.1";
-const char* destIP = "127.0.0.1";
-int distx;
-int disty;
-int framecenx, frameceny,x,y;
+
 
 int main(int argc, char* argv[])
 {
@@ -186,41 +175,52 @@ FreeHandles:
 
 static void XferCallback(SapXferCallbackInfo *pInfo)
 {
+   ///*** BEGIN MODIFICATION FOR OPENCV ***
    SapView *pView = (SapView *)pInfo->GetContext();
-  
-   int largest_area = 0;
-   int largest_contour_index = 0;
    PUINT8 pData;
-   char x_thos ;
-   char x_huns ;
-   char x_tens ;
-   char x_ones ;
-   			   ;
-   char y_thos ;
-   char y_huns ;
-   char y_tens ;
-   char y_ones ;
-  
+
+   double largest_area = 0;
+   int largest_contour_index = 0;
+ 
+
+   const char *path = "C:\\Users\\Bobby\\Documents\\GitHub\\GLO_Tracking\\Data.txt"; ///path to write data to 
+   std::ofstream file(path); 
+ 
+   double distx; ///distance from center, declared as double bc it is converted to degrees in future (often less than 1 )
+   double disty;
+   int x, y;
+
+   Point framcenter; ///OpenCV variables for modification of Mat object 
+   Rect bounding_rect;
+   Point center;
+   vector<vector<Point>> contours;
+   vector<Vec4i> hierarchy;
+   framcenter.x = 640; ///this represents the true center of the fram if 1280x1024
+   framcenter.y = 512; 
    // refresh view
    ///pView->Show();  no longer want to waste resources viewing with sapera window, using openCV window 
   
    SapBuffer *Buf = pView->GetBuffer(); ///retrieve current buffer
-   Buf->GetAddress((void**)&pData); ///retrieve pointer to intensity matrix values from Buffer  
-   for (int i = 0; i < Buf->GetHeight(); i++) ///loop through the size of the whole image and store intensity values in the Mat container Img
+   Buf->GetAddress((void**)&pData); ///retrieve pointer to intensity matrix values from Buffer
+
+   int height = Buf->GetHeight(); ///height and width of current frame grabbed 
+   int width = Buf->GetWidth();
+
+
+   for (int i = 0; i < height; i++) ///loop through the size of the whole image and store intensity values in the Mat container Img
    {
-	   for (int j = 0; j < Buf->GetWidth(); j++)
+	   for (int j = 0; j < width; j++)
 	   {
-		   
 		   Img.at<uchar>(i, j) = *pData;
 		   pData++; ///increment through each memory address of pData 
 	   }
    }
    Buf->ReleaseAddress((void**)&pData); ///release pointer to intensity matrix 
   
-   /// GaussianBlur(Img, Img, Size(3, 3), 0, 0); 
-   ///Filter the image (this operation lowers the number of contours, but is an expensive operation, usually faster to use only threshold)
+   /// GaussianBlur(Img, Img, Size(3, 3), 0, 0);
+   ///This can be used to filter the image Size(x,x) changes the kernal size 
 
-   threshold(Img,Img, 30, 255, THRESH_BINARY); ///Threshold the gray
+   threshold(Img,Img, 80, 255, THRESH_BINARY); ///Threshold the gray (change 3rd parameter based on brightness of "sun")
    findContours(Img, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_TC89_L1); /// Find the contours in the image
    
    for (int i = 0; i< contours.size(); i++) /// iterate through each contour. 
@@ -238,114 +238,38 @@ static void XferCallback(SapXferCallbackInfo *pInfo)
    }
   
    rectangle(Img, bounding_rect, Scalar(120,120 ,120), 5, 2, 0); ///draw a rectangle around the disk of the sun 
-   center = (bounding_rect.br() + bounding_rect.tl())*0.5; ///find center of the circle 
-   circle(Img, center, 5, Scalar(120, 120, 120), 2); /// draw center on circle 
+   center = (bounding_rect.br() + bounding_rect.tl())*0.5; ///find center of the circle (tl= topleft, br=botttomright)
+   circle(Img, center, 5, Scalar(180, 180, 180), 2); /// draw center on sun
+   circle(Img, framcenter, 5, Scalar(60, 60, 60), 2); /// draw center of frame   
    
    x = center.x;
    y = center.y;
 
+   /// Point rad = (bounding_rect.tl()-bounding_rect.br());
+   ///cout << rad;
+  
+   distx = x - framcenter.x;
+   disty = y - framcenter.y;
 
- //  frame_center.x = (Buf->GetWidth()) / 2;
- //  frame_center.y = (Buf->GetHeight()) / 2;  ///center of the frame 
+   distx *= 0.001241;  ///change pixel scaling (this is for .53/427 deg/pixel, default is .001 degree per pixel) 
+   disty *= 0.001241;
 
-   framecenx = (Buf->GetWidth()) / 2;
-   frameceny = (Buf->GetHeight()) / 2;
-   distx = x - framecenx;
-   disty = y - frameceny;
-
+   file << distx << "," << disty;
+   file.close();
 
    //cout << "Distance from center of Frame: " << (center.x - frame_center.x) << "," << (center.y - frame_center.y) << "\n";
 
-
-   ///Data must be sent through UDP as Const Char* , so coordinate location parsed into chars 
-   /// +48 accounts for the offset of ASCII values 
-   
-   if ((distx < 0)) ///conditions for if less than to send as const char * 
-   {
-	   x_thos = (char)((abs(distx) % 10) + 48); ///value for negative sign is ASCII
-	   x_huns = (char)(((abs(distx) / 10) % 10) + 48);
-	   x_tens = (char)(((abs(distx) / 100) % 10) + 48);
-	   x_ones = 45;
-   }
-   else
-   {
-	  x_thos = (char)(((distx % 10) + 48));
-	  x_huns = (char)((((distx) / 10) % 10) + 48);
-	  x_tens = (char)((((distx) / 100) % 10) + 48);
-	  x_ones = (char)((((distx) / 1000) % 10) + 48);
-
-	  
-   }
-   if ((disty) < 0) ///identical to above but for y coordinate
-   {
-	   y_thos = (char)((abs(disty)%10) + 48);
-	   y_huns = (char)(((abs(disty) / 10) % 10) + 48);
-	   y_tens = (char)(((abs(disty) / 100) % 10) + 48);
-	   y_ones = 45;
-   }
-   else
-   {
-	   y_thos = (char)(((disty % 10) + 48));
-	   y_huns = (char)((((disty) / 10) % 10) + 48);
-	   y_tens = (char)((((disty) / 100) % 10) + 48);
-	   y_ones = (char)((((disty) / 1000) % 10) + 48);
-   }
-   
-   
-   /*
-   x_thos = (char)(((x) % 10) + 48);
-   x_huns = (char)((((x) / 10) % 10) + 48);
-   x_tens = (char)((((x) / 100) % 10) + 48);
-   x_ones = (char)((((x) / 1000) % 10) + 48);
-
-   y_thos = (char)(((y) % 10) + 48);
-   y_huns = (char)((((y) / 10) % 10) + 48);
-   y_tens = (char)((((y) / 100) % 10) + 48);
-   y_ones = (char)((((y) / 1000) % 10) + 48);
-   */
-
-
-   char comma = 44; ///ASCII value for comma 
-
-   char pkt[18] = { x_ones,x_tens,x_huns,x_thos,comma,y_ones,y_tens,y_huns,y_thos }; ///Packet to be sent 
-
-   ///UDP Configuartion 
-   sockaddr_in dest;
-   sockaddr_in local;
-   WSAData data;
-   WSAStartup(MAKEWORD(2, 2), &data);
-   ULONG* srcAddr = new ULONG;
-   ULONG* destAddr = new ULONG;
-
-   local.sin_family = AF_INET;
-   inet_pton(AF_INET, srcIP, srcAddr);
-   local.sin_addr.s_addr = *srcAddr;
-   local.sin_port = htons(0);
-
-   dest.sin_family = AF_INET;
-   inet_pton(AF_INET, destIP, destAddr);
-   dest.sin_addr.s_addr = *destAddr;
-   dest.sin_port = htons(8080);
-
-   SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-   bind(s, (sockaddr *)&local, sizeof(local));
-
-   sendto(s, pkt, strlen(pkt), 0, (sockaddr *)&dest, sizeof(dest));
-
-
-
-   imshow("frame", Img);  /// ***USE THESE TO SHOW WITH OPENCV WINDOW
+   imshow("frame", Img);  /// Shows the current frame through the OpenCV window 
    waitKey(1);
    
-   
+   ///*** END OF MODIFICATION FOR OPENCV ***///
+
    // refresh framerate
    static float lastframerate = 0.0f;
    SapTransfer* pXfer = pInfo->GetTransfer();
    if (pXfer->UpdateFrameRateStatistics())
    {
 	   /// export the array of values here 
-
-	  
       SapXferFrameRateInfo* pFrameRateInfo = pXfer->GetFrameRateStatistics();
       float framerate = 0.0f;
 
@@ -368,8 +292,7 @@ static void XferCallback(SapXferCallbackInfo *pInfo)
 
    }
 
-   delete srcAddr;
-   delete destAddr;
+
 }
 
 static BOOL GetOptions(int argc, char *argv[], char *acqServerName, UINT32 *pAcqDeviceIndex, char *configFileName)
